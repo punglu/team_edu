@@ -19,44 +19,47 @@ steps:
         # 허용된 사용자 ID 목록
         ALLOWED_USERS="junnyunk kcjang7 namss seulki go23 hyungjin_moon spy28 hgpark05 jsbyeon jbyun spjeong bkchoi21 mcolors"
 
-        # 브랜치명에서 edu/ 제거
-        BRANCH_SUFFIX="${BRANCH_NAME#edu/}"
+        # Cloud Build 내장 치환 변수를 로컬 변수로 고정한다 (이후 가공은 순수 bash로 처리)
+        RAW_BRANCH="${BRANCH_NAME}"
 
-        if [[ -z "${BRANCH_SUFFIX}" ]]; then
-          echo "ERROR: 브랜치명 파싱 실패 (edu/ 이후가 비어있음)"
+        # 브랜치명에서 edu/ 제거
+        BRANCH_SUFFIX="$${RAW_BRANCH#edu/}"
+
+        if [[ -z "$${BRANCH_SUFFIX}" ]]; then
+          echo "ERROR: 브랜치명 파싱 실패: $${RAW_BRANCH}"
           exit 1
         fi
 
         # -projectflow 접미사 제거
-        USER_ID="${BRANCH_SUFFIX%-projectflow}"
+        USER_ID="$${BRANCH_SUFFIX%-projectflow}"
 
         # 접미사 제거 후 빈 문자열 체크
-        if [[ -z "${USER_ID}" ]]; then
+        if [[ -z "$${USER_ID}" ]]; then
           echo "ERROR: 사용자 ID가 비어있음"
           exit 1
         fi
 
         # 허용된 사용자 검증
-        if ! echo "${ALLOWED_USERS}" | grep -w "${USER_ID}" > /dev/null; then
-          echo "ERROR: 허용되지 않은 사용자 ID: ${USER_ID}"
-          echo "허용된 사용자: ${ALLOWED_USERS}"
+        if ! echo "$${ALLOWED_USERS}" | grep -w "$${USER_ID}" > /dev/null; then
+          echo "ERROR: 허용되지 않은 사용자 ID: $${USER_ID}"
+          echo "허용된 사용자: $${ALLOWED_USERS}"
           exit 1
         fi
 
         # Cloud Run 서비스명용 정규화 (언더스코어 → 하이픈, 대문자 → 소문자)
-        NORMALIZED_ID="$(echo "${USER_ID}" | tr '_' '-' | tr '[:upper:]' '[:lower:]')"
+        NORMALIZED_ID="$(echo "$${USER_ID}" | tr '_' '-' | tr '[:upper:]' '[:lower:]')"
 
-        SERVICE_NAME="projectflow-edu-${NORMALIZED_ID}"
-        IMAGE="${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPOSITORY}/${SERVICE_NAME}:${SHORT_SHA}"
+        SERVICE_NAME="projectflow-edu-$${NORMALIZED_ID}"
+        IMAGE="${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPOSITORY}/$${SERVICE_NAME}:${SHORT_SHA}"
 
         # 파일에 저장
-        printf '%s' "${USER_ID}" > /workspace/.user_id
-        printf '%s' "${SERVICE_NAME}" > /workspace/.service_name
-        printf '%s' "${IMAGE}" > /workspace/.image
+        printf '%s' "$${USER_ID}" > /workspace/.user_id
+        printf '%s' "$${SERVICE_NAME}" > /workspace/.service_name
+        printf '%s' "$${IMAGE}" > /workspace/.image
 
         echo "✓ 사용자 검증 완료"
-        echo "  USER_ID: ${USER_ID}"
-        echo "  SERVICE_NAME: ${SERVICE_NAME}"
+        echo "  USER_ID: $${USER_ID}"
+        echo "  SERVICE_NAME: $${SERVICE_NAME}"
 
   - id: frontend-install
     name: node:22-alpine
@@ -114,12 +117,12 @@ steps:
         SERVICE_NAME="$(cat /workspace/.service_name)"
         IMAGE="$(cat /workspace/.image)"
 
-        gcloud run deploy "${SERVICE_NAME}" \
-          --image "${IMAGE}" \
+        gcloud run deploy "$${SERVICE_NAME}" \
+          --image "$${IMAGE}" \
           --region "${_REGION}" \
           --platform managed \
           --allow-unauthenticated \
-          --set-env-vars "APP_ENV=education,WORKSPACE_ID=${USER_ID},GOOGLE_CLOUD_PROJECT=${PROJECT_ID},FIRESTORE_DATABASE=${_FIRESTORE_DATABASE},DB_SCHEMA=${USER_ID}" \
+          --set-env-vars "APP_ENV=education,WORKSPACE_ID=$${USER_ID},GOOGLE_CLOUD_PROJECT=${PROJECT_ID},FIRESTORE_DATABASE=${_FIRESTORE_DATABASE},DB_SCHEMA=$${USER_ID}" \
           --set-secrets="DATABASE_URL=team_edu_db_url:latest" \
           --min-instances 0 \
           --max-instances 2 \
@@ -135,12 +138,12 @@ steps:
       - |
         SERVICE_NAME="$(cat /workspace/.service_name)"
         export SERVICE_URL="$(
-          gcloud run services describe "${SERVICE_NAME}" \
+          gcloud run services describe "$${SERVICE_NAME}" \
             --region "${_REGION}" \
             --format='value(status.url)'
         )"
 
-        echo "Health check 시작: ${SERVICE_URL}/api/health"
+        echo "Health check 시작: $${SERVICE_URL}/api/health"
 
         python3 - <<'PY'
         import os
