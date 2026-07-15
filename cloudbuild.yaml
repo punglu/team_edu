@@ -1,0 +1,113 @@
+substitutions:
+  _REGION: asia-northeast3
+  _REPOSITORY: projectflow-edu
+  _RUNTIME_SERVICE_ACCOUNT: projectflow-edu-runtime
+  _FIRESTORE_DATABASE: "(default)"
+
+options:
+  logging: CLOUD_LOGGING_ONLY
+  substitutionOption: ALLOW_LOOSE
+
+steps:
+  - id: validate-branch
+    name: gcr.io/cloud-builders/bash
+    entrypoint: bash
+    args:
+      - -ceu
+      - |
+        [[ "${BRANCH_NAME}" =~ ^edu/[a-z0-9][a-z0-9_-]*$ ]] || {
+          echo "허용되지 않은 브랜치명: ${BRANCH_NAME}"
+          exit 1
+        }
+
+  - id: frontend-install
+    name: node:22-alpine
+    dir: frontend
+    entrypoint: npm
+    args: ["ci"]
+
+  - id: frontend-typecheck
+    name: node:22-alpine
+    dir: frontend
+    entrypoint: npm
+    args: ["run", "typecheck"]
+
+  - id: frontend-build
+    name: node:22-alpine
+    dir: frontend
+    entrypoint: npm
+    args: ["run", "build"]
+
+  - id: backend-test
+    name: python:3.12-slim
+    dir: backend
+    entrypoint: bash
+    args:
+      - -ceu
+      - |
+        pip install --no-cache-dir -r requirements.txt
+        pytest -q
+
+  - id: prepare-names
+    name: gcr.io/cloud-builders/bash
+    entrypoint: bash
+    args:
+      - -ceu
+      - |
+        TRAINEE_ID="${BRANCH_NAME#edu/}"
+        NORMALIZED_ID="$(echo "${TRAINEE_ID}" | tr '_' '-' | tr '[:upper:]' '[:lower:]')"
+        SERVICE_NAME="edu-${NORMALIZED_ID}"
+        IMAGE="${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPOSITORY}/${SERVICE_NAME}:${SHORT_SHA}"
+        printf '%s' "${TRAINEE_ID}" > /workspace/.trainee_id
+        printf '%s' "${SERVICE_NAME}" > /workspace/.service_name
+        printf '%s' "${IMAGE}" > /workspace/.image
+
+  - id: build-image
+    name: gcr.io/cloud-builders/docker
+    entrypoint: bash
+    args:
+      - -ceu
+      - |
+        docker build -t "$(cat /workspace/.image)" .
+
+  - id: push-image
+    name: gcr.io/cloud-builders/docker
+    entrypoint: bash
+    args:
+      - -ceu
+      - |
+        docker push "$(cat /workspace/.image)"
+
+  - id: deploy-cloud-run
+    name: gcr.io/google.com/cloudsdktool/cloud-sdk:slim
+    entrypoint: bash
+    args:
+      - -ceu
+      - |
+        gcloud run deploy "$(cat /workspace/.service_name)"           --image "$(cat /workspace/.image)"           --region "${_REGION}"           --platform managed           --allow-unauthenticated           --service-account "${_RUNTIME_SERVICE_ACCOUNT}@${PROJECT_ID}.iam.gserviceaccount.com"           --set-env-vars "APP_ENV=education,WORKSPACE_ID=$(cat /workspace/.trainee_id),GOOGLE_CLOUD_PROJECT=${PROJECT_ID},FIRESTORE_DATABASE=${_FIRESTORE_DATABASE}"           --min-instances 0           --max-instances 2           --memory 512Mi           --cpu 1           --quiet
+
+  - id: health-check
+    name: gcr.io/google.com/cloudsdktool/cloud-sdk:slim
+    entrypoint: bash
+    args:
+      - -ceu
+      - |
+        SERVICE_URL="$(gcloud run services describe "$(cat /workspace/.service_name)"           --region "${_REGION}"           --format='value(status.url)')"
+        python - <<'PY'
+        import os
+        import time
+        import urllib.request
+
+        url = os.environ["SERVICE_URL"].rstrip("/") + "/api/health"
+        last_error = None
+        for _ in range(12):
+            try:
+                with urllib.request.urlopen(url, timeout=15) as response:
+                    if response.status == 200:
+                        print(f"Health check PASS: {url}")
+                        raise SystemExit(0)
+            except Exception as exc:
+                last_error = exc
+                time.sleep(5)
+        raise SystemExit(f"Health check failed: {last_error}")
+        PY

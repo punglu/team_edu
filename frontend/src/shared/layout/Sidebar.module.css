@@ -1,0 +1,93 @@
+.sidebar {
+  position: sticky;
+  top: 0;
+  min-height: 100vh;
+  padding: 20px 14px;
+  display: flex;
+  flex-direction: column;
+  background: var(--sidebar);
+  color: #dbe5f2;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 4px 8px 24px;
+}
+
+.brand strong,
+.brand span {
+  display: block;
+}
+
+.brand strong {
+  color: #ffffff;
+  font-size: 15px;
+}
+
+.brand span {
+  margin-top: 2px;
+  color: #8da0b9;
+  font-size: 11px;
+}
+
+.logo {
+  width: 34px;
+  height: 34px;
+  display: grid;
+  place-items: center;
+  border-radius: 10px;
+  background: var(--primary);
+  color: #ffffff;
+  font-weight: 800;
+}
+
+.nav {
+  display: grid;
+  gap: 6px;
+}
+
+.item,
+.settings {
+  width: 100%;
+  min-height: 42px;
+  border: 0;
+  border-radius: 9px;
+  padding: 0 12px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  color: #b9c6d8;
+  background: transparent;
+  text-align: left;
+}
+
+.item:hover,
+.settings:hover {
+  background: var(--sidebar-hover);
+  color: #ffffff;
+}
+
+.active {
+  background: var(--sidebar-active);
+  color: #ffffff;
+}
+
+.settings {
+  margin-top: auto;
+}
+
+@media (max-width: 960px) {
+  .brand > div:last-child,
+  .item span:last-child,
+  .settings span:last-child {
+    display: none;
+  }
+
+  .brand,
+  .item,
+  .settings {
+    justify-content: center;
+  }
+}

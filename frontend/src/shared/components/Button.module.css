@@ -1,0 +1,32 @@
+.button {
+  min-height: 38px;
+  padding: 0 14px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  font-weight: 700;
+}
+
+.primary {
+  color: #ffffff;
+  background: var(--primary);
+}
+
+.primary:hover {
+  background: var(--primary-hover);
+}
+
+.secondary {
+  color: var(--ink);
+  border-color: var(--line);
+  background: var(--surface);
+}
+
+.ghost {
+  color: var(--ink);
+  background: transparent;
+}
+
+.danger {
+  color: #ffffff;
+  background: var(--danger);
+}

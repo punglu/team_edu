@@ -1,0 +1,156 @@
+schema_version: "0.3"
+
+metadata:
+  document_type: education_app_spec
+  status: draft
+  app_id: projectflow-edu
+  app_name:
+    ko: 프로젝트
+    en: ProjectFlow
+  purpose: >
+    IT 지식이 많지 않은 교육생이 VSCode에서 Claude Code와 대화하며
+    요구사항 작성, 기능 구현, Git Push, Cloud Build 자동 빌드,
+    Cloud Run 배포, 웹 브라우저 검증까지 경험하기 위한 공통 교육용 웹 애플리케이션 사양이다.
+  ui_reference:
+    source: outlook_hub_lite
+    principle: >
+      Outlook Hub의 익숙한 엔터프라이즈 UI 골격과 사용성을 참고하되,
+      운영 소스·업무 도메인·인증·권한·인프라 복잡성은 포함하지 않는다.
+  delivery_model:
+    local_runtime_required: false
+    browser_verification_only: true
+    deployment_unit: single_cloud_run_service_per_trainee
+    container_model: single_container
+    frontend_backend_packaging: combined
+    source_branch_pattern: "edu/{trainee_id}"
+
+technical_stack:
+  frontend:
+    framework: React
+    build_tool: Vite
+    language: TypeScript
+    package_manager: npm
+  backend:
+    language: Python
+    framework: FastAPI
+    validation: Pydantic
+  database:
+    provider: Cloud Firestore
+  deployment:
+    build: Cloud Build
+    runtime: Cloud Run
+    image_registry: Artifact Registry
+  local_environment:
+    node_required: false
+    python_required: false
+    docker_required: false
+    gcloud_required: false
+
+branding:
+  product_name: ProjectFlow
+  page_title: 프로젝트
+  tagline: 프로젝트 현황을 한눈에 보고 관리하세요.
+  tone: clean_enterprise
+  palette:
+    sidebar: dark_navy
+    primary_action: controlled_blue
+    supporting_accent: muted_teal
+    text: graphite_ink
+    neutral: cool_slate
+  restrictions:
+    - 인라인 스타일 금지
+    - 대면적 고채도 색상 금지
+    - 과도한 그림자와 그라데이션 금지
+
+navigation:
+  - key: dashboard
+    label: 대시보드
+    route: /dashboard
+    status: placeholder
+  - key: projects
+    label: 프로젝트
+    route: /projects
+    status: implemented
+  - key: tasks
+    label: 업무
+    route: /tasks
+    status: placeholder
+  - key: calendar
+    label: 캘린더
+    route: /calendar
+    status: placeholder
+  - key: reports
+    label: 보고서
+    route: /reports
+    status: placeholder
+  - key: members
+    label: 팀원
+    route: /members
+    status: placeholder
+  - key: settings
+    label: 설정
+    route: /settings
+    status: placeholder
+
+domain_model:
+  project_status:
+    - value: IN_PROGRESS
+      label: 진행 중
+    - value: IN_REVIEW
+      label: 검토 중
+    - value: ON_HOLD
+      label: 보류
+    - value: COMPLETED
+      label: 완료
+  project_priority:
+    - value: LOW
+      label: 낮음
+    - value: MEDIUM
+      label: 보통
+    - value: HIGH
+      label: 높음
+
+api:
+  base_path: /api
+  endpoints:
+    - "GET /api/health"
+    - "GET /api/projects"
+    - "POST /api/projects"
+    - "GET /api/projects/{project_id}"
+    - "PUT /api/projects/{project_id}"
+    - "DELETE /api/projects/{project_id}"
+    - "GET /api/members"
+
+firestore:
+  workspace_environment_variable: WORKSPACE_ID
+  database_environment_variable: FIRESTORE_DATABASE
+  project_environment_variable: GOOGLE_CLOUD_PROJECT
+  project_path: "workspaces/{WORKSPACE_ID}/projects/{project_id}"
+  member_path: "workspaces/{WORKSPACE_ID}/members/{member_id}"
+  client_workspace_override_allowed: false
+
+education_boundaries:
+  editable:
+    - frontend/src/features/**
+    - backend/app/features/**
+    - 화면 제목과 설명
+    - 메뉴
+    - 데이터 필드
+    - 업무 규칙
+  protected:
+    - frontend/src/shared/**
+    - frontend/src/app/**
+    - Dockerfile
+    - cloudbuild.yaml
+    - backend/app/core/**
+    - CLAUDE.md
+  prohibited:
+    - main 브랜치 직접 수정
+    - 다른 교육생 브랜치 수정
+    - 실제 개인정보 또는 고객정보 입력
+    - Secret 하드코딩
+    - IAM과 인프라 임의 변경
+
+ssot:
+  product_and_contract: app-spec.yml
+  coding_and_work_rules: CLAUDE.md
