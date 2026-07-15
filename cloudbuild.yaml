@@ -1,7 +1,6 @@
 substitutions:
   _REGION: asia-northeast3
   _REPOSITORY: projectflow-edu
-  _RUNTIME_SERVICE_ACCOUNT: projectflow-edu-runtime
   _FIRESTORE_DATABASE: "(default)"
 
 options:
@@ -9,16 +8,55 @@ options:
   substitutionOption: ALLOW_LOOSE
 
 steps:
-  - id: validate-branch
+  - id: validate-and-extract-user
     name: bash:5.2
     entrypoint: bash
     args:
       - -ceu
       - |
-        [[ "${BRANCH_NAME}" =~ ^edu/[a-z0-9][a-z0-9_-]*$ ]] || {
-          echo "허용되지 않은 브랜치명: ${BRANCH_NAME}"
+        set -o pipefail
+
+        # 허용된 사용자 ID 목록
+        ALLOWED_USERS="junnyunk kcjang7 namss seulki go23 hyungjin_moon spy28 hgpark05 jsbyeon jbyun spjeong bkchoi21 mcolors"
+
+        # 브랜치명에서 edu/ 제거
+        BRANCH_SUFFIX="${BRANCH_NAME#edu/}"
+
+        if [[ -z "${BRANCH_SUFFIX}" ]]; then
+          echo "ERROR: 브랜치명 파싱 실패 (edu/ 이후가 비어있음)"
           exit 1
-        }
+        fi
+
+        # -projectflow 접미사 제거
+        USER_ID="${BRANCH_SUFFIX%-projectflow}"
+
+        # 접미사 제거 후 빈 문자열 체크
+        if [[ -z "${USER_ID}" ]]; then
+          echo "ERROR: 사용자 ID가 비어있음"
+          exit 1
+        fi
+
+        # 허용된 사용자 검증
+        if ! echo "${ALLOWED_USERS}" | grep -w "${USER_ID}" > /dev/null; then
+          echo "ERROR: 허용되지 않은 사용자 ID: ${USER_ID}"
+          echo "허용된 사용자: ${ALLOWED_USERS}"
+          exit 1
+        fi
+
+        # Cloud Run 서비스명용 정규화 (언더스코어 → 하이픈, 대문자 → 소문자)
+        NORMALIZED_ID="$(echo "${USER_ID}" | tr '_' '-' | tr '[:upper:]' '[:lower:]')"
+
+        SERVICE_NAME="projectflow-edu-${NORMALIZED_ID}"
+        IMAGE="${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPOSITORY}/${SERVICE_NAME}:${SHORT_SHA}"
+
+        # 파일에 저장
+        printf '%s' "${USER_ID}" > /workspace/.user_id
+        printf '%s' "${SERVICE_NAME}" > /workspace/.service_name
+        printf '%s' "${IMAGE}" > /workspace/.image
+
+        echo "✓ 사용자 검증 완료"
+        echo "  USER_ID: ${USER_ID}"
+        echo "  SERVICE_NAME: ${SERVICE_NAME}"
 
   - id: frontend-install
     name: node:22-alpine
@@ -48,24 +86,6 @@ steps:
         pip install --no-cache-dir -r requirements.txt
         pytest -q
 
-  - id: prepare-names
-    name: bash:5.2
-    entrypoint: bash
-    args:
-      - -ceu
-      - |
-        TRAINEE_ID="${BRANCH_NAME#edu/}"
-        NORMALIZED_ID="$(echo "${TRAINEE_ID}" \
-          | tr '_' '-' \
-          | tr '[:upper:]' '[:lower:]')"
-
-        SERVICE_NAME="edu-${NORMALIZED_ID}"
-        IMAGE="${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPOSITORY}/${SERVICE_NAME}:${SHORT_SHA}"
-
-        printf '%s' "${TRAINEE_ID}" > /workspace/.trainee_id
-        printf '%s' "${SERVICE_NAME}" > /workspace/.service_name
-        printf '%s' "${IMAGE}" > /workspace/.image
-
   - id: build-image
     name: gcr.io/cloud-builders/docker
     entrypoint: bash
@@ -90,13 +110,17 @@ steps:
     args:
       - -ceu
       - |
-        gcloud run deploy "$(cat /workspace/.service_name)" \
-          --image "$(cat /workspace/.image)" \
+        USER_ID="$(cat /workspace/.user_id)"
+        SERVICE_NAME="$(cat /workspace/.service_name)"
+        IMAGE="$(cat /workspace/.image)"
+
+        gcloud run deploy "${SERVICE_NAME}" \
+          --image "${IMAGE}" \
           --region "${_REGION}" \
           --platform managed \
           --allow-unauthenticated \
-          --service-account "${_RUNTIME_SERVICE_ACCOUNT}@${PROJECT_ID}.iam.gserviceaccount.com" \
-          --set-env-vars "APP_ENV=education,WORKSPACE_ID=$(cat /workspace/.trainee_id),GOOGLE_CLOUD_PROJECT=${PROJECT_ID},FIRESTORE_DATABASE=${_FIRESTORE_DATABASE}" \
+          --set-env-vars "APP_ENV=education,WORKSPACE_ID=${USER_ID},GOOGLE_CLOUD_PROJECT=${PROJECT_ID},FIRESTORE_DATABASE=${_FIRESTORE_DATABASE},DB_SCHEMA=${USER_ID}" \
+          --set-secrets="DATABASE_URL=team_edu_db_url:latest" \
           --min-instances 0 \
           --max-instances 2 \
           --memory 512Mi \
@@ -109,11 +133,14 @@ steps:
     args:
       - -ceu
       - |
+        SERVICE_NAME="$(cat /workspace/.service_name)"
         export SERVICE_URL="$(
-          gcloud run services describe "$(cat /workspace/.service_name)" \
+          gcloud run services describe "${SERVICE_NAME}" \
             --region "${_REGION}" \
             --format='value(status.url)'
         )"
+
+        echo "Health check 시작: ${SERVICE_URL}/api/health"
 
         python3 - <<'PY'
         import os
@@ -123,15 +150,18 @@ steps:
         url = os.environ["SERVICE_URL"].rstrip("/") + "/api/health"
         last_error = None
 
-        for _ in range(12):
+        for attempt in range(12):
             try:
                 with urllib.request.urlopen(url, timeout=15) as response:
                     if response.status == 200:
-                        print(f"Health check PASS: {url}")
+                        print(f"✓ Health check PASS: {url}")
                         raise SystemExit(0)
             except Exception as exc:
                 last_error = exc
-                time.sleep(5)
+                remaining = 12 - attempt - 1
+                print(f"  시도 {attempt + 1}/12 실패 ({remaining}회 남음): {type(exc).__name__}")
+                if remaining > 0:
+                    time.sleep(5)
 
-        raise SystemExit(f"Health check failed: {last_error}")
+        raise SystemExit(f"✗ Health check 실패: {last_error}")
         PY
