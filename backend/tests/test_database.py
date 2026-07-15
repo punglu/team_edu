@@ -25,6 +25,12 @@ def test_postgresql_db_schema_sets_search_path(listens_for, create_engine) -> No
     assert create_engine.call_args.kwargs["connect_args"] == {
         "options": "-csearch_path=bkchoi21",
     }
+    assert create_engine.call_args.kwargs["pool_size"] == 1
+    assert create_engine.call_args.kwargs["max_overflow"] == 0
+    assert create_engine.call_args.kwargs["pool_timeout"] == 10
+    assert create_engine.call_args.kwargs["pool_pre_ping"] is True
+    assert create_engine.call_args.kwargs["pool_recycle"] == 1800
+    assert create_engine.call_args.kwargs["pool_use_lifo"] is True
 
 
 @patch("app.core.database.create_engine")
@@ -83,3 +89,30 @@ def test_build_database_url_from_discrete_postgresql_fields() -> None:
     assert build_database_url(settings) == (
         "postgresql+psycopg2://team_edu_master:secret@127.0.0.1/team_edu"
     )
+
+
+def test_pool_settings_can_be_overridden() -> None:
+    settings = _settings(
+        app_env="test",
+        database_url="postgresql://u:p@localhost/db",
+        db_schema="test_user_a",
+        db_pool_size=2,
+        db_max_overflow=3,
+        db_pool_timeout=7,
+        db_pool_recycle=600,
+    )
+
+    assert settings.db_pool_size == 2
+    assert settings.db_max_overflow == 3
+    assert settings.db_pool_timeout == 7
+    assert settings.db_pool_recycle == 600
+
+
+def test_pool_settings_reject_negative_values() -> None:
+    with pytest.raises(ValidationError):
+        _settings(
+            app_env="test",
+            database_url="postgresql://u:p@localhost/db",
+            db_schema="test_user_a",
+            db_pool_size=-1,
+        )

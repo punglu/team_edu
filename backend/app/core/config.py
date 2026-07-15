@@ -26,6 +26,10 @@ class Settings(BaseSettings):
     cloud_sql_user: str | None = None
     cloud_sql_password: str | None = None
     cloud_sql_host: str | None = None
+    db_pool_size: int = 1
+    db_max_overflow: int = 0
+    db_pool_timeout: int = 10
+    db_pool_recycle: int = 1800
 
     model_config = SettingsConfigDict(
         env_file=".env",
@@ -51,6 +55,13 @@ class Settings(BaseSettings):
                 raise ValueError("DB_SCHEMA must be configured for PostgreSQL runtime")
 
         return self
+
+    @field_validator("db_pool_size", "db_max_overflow", "db_pool_timeout", "db_pool_recycle")
+    @classmethod
+    def validate_non_negative_pool_settings(cls, value: int) -> int:
+        if value < 0:
+            raise ValueError("DB pool settings must be non-negative")
+        return value
 
 
 @lru_cache
