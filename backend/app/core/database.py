@@ -29,7 +29,7 @@ def get_cloud_sql_engine(settings: Settings):
     return engine
 
 
-def test_cloud_sql_connection(settings: Settings) -> dict:
+def check_cloud_sql_connection(settings: Settings) -> dict:
     """Test Cloud SQL connection and return status."""
     if not settings.database_url and not all([settings.cloud_sql_host, settings.cloud_sql_db,
                                                settings.cloud_sql_user, settings.cloud_sql_password]):

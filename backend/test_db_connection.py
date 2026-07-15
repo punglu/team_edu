@@ -9,7 +9,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent))
 
 from app.core.config import get_settings
-from app.core.database import test_cloud_sql_connection
+from app.core.database import check_cloud_sql_connection
 
 if __name__ == "__main__":
     settings = get_settings()
@@ -27,7 +27,7 @@ if __name__ == "__main__":
     print(f"  CLOUD_SQL_PASSWORD: {'***' if settings.cloud_sql_password else 'Not set'}")
     print()
 
-    result = test_cloud_sql_connection(settings)
+    result = check_cloud_sql_connection(settings)
 
     print("Test Result:")
     for key, value in result.items():

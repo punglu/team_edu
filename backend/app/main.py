@@ -5,7 +5,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from app.core.config import get_settings
-from app.core.database import test_cloud_sql_connection
+from app.core.database import check_cloud_sql_connection
 from app.features.projects.repository import (
     FirestoreProjectRepository,
     InMemoryProjectRepository,
@@ -43,7 +43,7 @@ def health_check() -> dict[str, str]:
 @app.get("/api/cloud-sql/test")
 def cloud_sql_test() -> dict:
     """Test Cloud SQL connection."""
-    return test_cloud_sql_connection(settings)
+    return check_cloud_sql_connection(settings)
 
 
 STATIC_DIR = Path(__file__).resolve().parent.parent / "static"
