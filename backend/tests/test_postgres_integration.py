@@ -12,6 +12,7 @@ from sqlalchemy import create_engine, inspect, text
 
 from app.core.config import get_settings
 from app.core.database import get_engine, get_session_factory
+from app.features.projects.repository import SAMPLE_MEMBERS
 from app.main import app
 
 
@@ -60,6 +61,33 @@ def _configure_runtime(schema: str) -> None:
     get_session_factory.cache_clear()
 
 
+def _seed_members(schema: str) -> None:
+    engine = create_engine(_require_test_database_url(), isolation_level="AUTOCOMMIT")
+    with engine.connect() as connection:
+        for member in SAMPLE_MEMBERS:
+            connection.execute(
+                text(
+                    f"""
+                    INSERT INTO {schema}.members (id, name, department, role, active)
+                    VALUES (:id, :name, :department, :role, :active)
+                    ON CONFLICT (id) DO UPDATE
+                    SET name = EXCLUDED.name,
+                        department = EXCLUDED.department,
+                        role = EXCLUDED.role,
+                        active = EXCLUDED.active
+                    """
+                ),
+                {
+                    "id": member.id,
+                    "name": member.name,
+                    "department": member.department,
+                    "role": member.role,
+                    "active": member.active,
+                },
+            )
+    engine.dispose()
+
+
 @pytest.fixture(scope="module")
 def prepared_schemas() -> dict[str, str]:
     database_url = _require_test_database_url()
@@ -79,6 +107,9 @@ def prepared_schemas() -> dict[str, str]:
     for schema in (schemas["a"], schemas["b"], schemas["downgrade"]):
         result = _run_alembic(schema, "upgrade", "head")
         assert result.returncode == 0, result.stderr or result.stdout
+
+    for schema in (schemas["a"], schemas["b"]):
+        _seed_members(schema)
 
     yield schemas
 
@@ -173,6 +204,19 @@ def test_firestore_repository_is_not_used_in_postgres_runtime(prepared_schemas: 
         with TestClient(app) as client:
             response = client.get("/api/members")
             assert response.status_code == 200
+
+
+def test_postgres_members_returns_empty_without_fallback(prepared_schemas: dict[str, str], restore_env) -> None:
+    _configure_runtime(prepared_schemas["b"])
+    engine = create_engine(_require_test_database_url(), isolation_level="AUTOCOMMIT")
+    with engine.connect() as connection:
+        connection.execute(text(f"DELETE FROM {prepared_schemas['b']}.members"))
+    engine.dispose()
+
+    with TestClient(app) as client:
+        response = client.get("/api/members")
+        assert response.status_code == 200
+        assert response.json() == []
 
 
 def test_disposable_schema_downgrade(prepared_schemas: dict[str, str]) -> None:

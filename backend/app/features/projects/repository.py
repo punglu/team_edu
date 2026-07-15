@@ -233,8 +233,6 @@ class SqlProjectRepository(ProjectRepository):
     def list_members(self) -> list[Member]:
         stmt = select(MemberModel).where(MemberModel.active.is_(True)).order_by(MemberModel.name.asc())
         members = self.session.scalars(stmt).all()
-        if not members:
-            return SAMPLE_MEMBERS
         return [
             Member(
                 id=member.id,
