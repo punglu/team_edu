@@ -3,8 +3,11 @@ from datetime import UTC, datetime
 from uuid import uuid4
 
 from google.cloud import firestore
+from sqlalchemy import select
+from sqlalchemy.orm import Session, selectinload
 
 from app.core.config import Settings
+from app.features.projects.models import MemberModel, ProjectInvitedMemberModel, ProjectModel
 from app.features.projects.schemas import Member, Project, ProjectInput, ProjectStatus
 
 
@@ -13,6 +16,24 @@ SAMPLE_MEMBERS = [
     Member(id="member-lee", name="이수정", department="프로젝트팀", role="대리"),
     Member(id="member-park", name="박상민", department="운영팀", role="사원"),
 ]
+
+
+def _project_from_model(model: ProjectModel) -> Project:
+    return Project(
+        id=model.id,
+        name=model.name,
+        owner_id=model.owner_id,
+        owner_name=model.owner_name,
+        description=model.description,
+        status=ProjectStatus(model.status),
+        progress=model.progress,
+        start_date=model.start_date,
+        due_date=model.due_date,
+        priority=model.priority,
+        invited_member_ids=[item.member_id for item in model.invited_members],
+        created_at=model.created_at,
+        updated_at=model.updated_at,
+    )
 
 
 class ProjectRepository(ABC):
@@ -129,6 +150,101 @@ class InMemoryProjectRepository(ProjectRepository):
 
     def list_members(self) -> list[Member]:
         return SAMPLE_MEMBERS
+
+
+class SqlProjectRepository(ProjectRepository):
+    def __init__(self, session: Session) -> None:
+        self.session = session
+
+    def _get_model(self, project_id: str) -> ProjectModel | None:
+        stmt = (
+            select(ProjectModel)
+            .where(ProjectModel.id == project_id)
+            .options(selectinload(ProjectModel.invited_members))
+        )
+        return self.session.scalar(stmt)
+
+    def list_projects(self) -> list[Project]:
+        stmt = (
+            select(ProjectModel)
+            .options(selectinload(ProjectModel.invited_members))
+            .order_by(ProjectModel.updated_at.desc())
+        )
+        return [_project_from_model(model) for model in self.session.scalars(stmt).all()]
+
+    def get_project(self, project_id: str) -> Project | None:
+        model = self._get_model(project_id)
+        if model is None:
+            return None
+        return _project_from_model(model)
+
+    def create_project(self, payload: ProjectInput) -> Project:
+        now = datetime.now(UTC)
+        project = ProjectModel(
+            id=str(uuid4()),
+            name=payload.name,
+            owner_id=payload.owner_id,
+            owner_name=payload.owner_name,
+            description=payload.description,
+            status=ProjectStatus.IN_PROGRESS.value,
+            progress=0,
+            start_date=payload.start_date,
+            due_date=payload.due_date,
+            priority=payload.priority.value,
+            created_at=now,
+            updated_at=now,
+            invited_members=[
+                ProjectInvitedMemberModel(position=index, member_id=member_id)
+                for index, member_id in enumerate(payload.invited_member_ids)
+            ],
+        )
+        self.session.add(project)
+        self.session.flush()
+        return _project_from_model(project)
+
+    def update_project(self, project_id: str, payload: ProjectInput) -> Project | None:
+        project = self._get_model(project_id)
+        if project is None:
+            return None
+
+        project.name = payload.name
+        project.owner_id = payload.owner_id
+        project.owner_name = payload.owner_name
+        project.description = payload.description
+        project.start_date = payload.start_date
+        project.due_date = payload.due_date
+        project.priority = payload.priority.value
+        project.updated_at = datetime.now(UTC)
+        project.invited_members = [
+            ProjectInvitedMemberModel(position=index, member_id=member_id)
+            for index, member_id in enumerate(payload.invited_member_ids)
+        ]
+        self.session.flush()
+        return _project_from_model(project)
+
+    def delete_project(self, project_id: str) -> bool:
+        project = self._get_model(project_id)
+        if project is None:
+            return False
+        self.session.delete(project)
+        self.session.flush()
+        return True
+
+    def list_members(self) -> list[Member]:
+        stmt = select(MemberModel).where(MemberModel.active.is_(True)).order_by(MemberModel.name.asc())
+        members = self.session.scalars(stmt).all()
+        if not members:
+            return SAMPLE_MEMBERS
+        return [
+            Member(
+                id=member.id,
+                name=member.name,
+                department=member.department,
+                role=member.role,
+                active=member.active,
+            )
+            for member in members
+        ]
 
 
 class FirestoreProjectRepository(ProjectRepository):

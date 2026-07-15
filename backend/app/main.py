@@ -6,22 +6,7 @@ from fastapi.staticfiles import StaticFiles
 
 from app.core.config import get_settings
 from app.core.database import check_cloud_sql_connection
-from app.features.projects.repository import (
-    FirestoreProjectRepository,
-    InMemoryProjectRepository,
-)
 from app.features.projects.router import router as projects_router
-from app.features.projects.service import ProjectService
-
-
-settings = get_settings()
-
-if settings.use_in_memory_repository:
-    repository = InMemoryProjectRepository()
-else:
-    repository = FirestoreProjectRepository(settings)
-
-project_service = ProjectService(repository)
 
 app = FastAPI(
     title="ProjectFlow Education API",
@@ -33,6 +18,7 @@ app.include_router(projects_router, prefix="/api")
 
 @app.get("/api/health")
 def health_check() -> dict[str, str]:
+    settings = get_settings()
     return {
         "status": "ok",
         "environment": settings.app_env,
@@ -43,7 +29,7 @@ def health_check() -> dict[str, str]:
 @app.get("/api/cloud-sql/test")
 def cloud_sql_test() -> dict:
     """Test Cloud SQL connection."""
-    return check_cloud_sql_connection(settings)
+    return check_cloud_sql_connection(get_settings())
 
 
 STATIC_DIR = Path(__file__).resolve().parent.parent / "static"

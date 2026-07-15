@@ -2,6 +2,7 @@ substitutions:
   _REGION: asia-northeast3
   _REPOSITORY: projectflow-edu
   _FIRESTORE_DATABASE: "(default)"
+  _CLOUD_SQL_INSTANCE: lgcns-lgeus-bliiling-dashboard:asia-northeast3:team-edu-dev
 
 options:
   logging: CLOUD_LOGGING_ONLY
@@ -87,6 +88,7 @@ steps:
       - -ceu
       - |
         pip install --no-cache-dir -r requirements.txt
+        export PYTHONPATH=/workspace/backend
         pytest -q
 
   - id: build-image
@@ -122,6 +124,7 @@ steps:
           --region "${_REGION}" \
           --platform managed \
           --allow-unauthenticated \
+          --add-cloudsql-instances "${_CLOUD_SQL_INSTANCE}" \
           --set-env-vars "APP_ENV=education,WORKSPACE_ID=$${USER_ID},GOOGLE_CLOUD_PROJECT=${PROJECT_ID},FIRESTORE_DATABASE=${_FIRESTORE_DATABASE},DB_SCHEMA=$${USER_ID}" \
           --set-secrets="DATABASE_URL=team_edu_db_url:latest" \
           --min-instances 0 \
